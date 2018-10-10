@@ -7,7 +7,7 @@
 # heracasa (Bojan Nikolic, bn204@cam.ac.uk), and from there bins them so that
 # closure measurements over successive days are aligned in LST.
 #
-# VERY MUCH A WORK IN PROGRESS. Plenty to do and tidy up...
+
 
 
 from astropy.time import Time
