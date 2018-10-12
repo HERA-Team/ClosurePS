@@ -34,6 +34,11 @@ def mdays(dc, n):
     # Rotate axes so days are in position 1 again
     return numpy.moveaxis(dnew, 2, 1)
 
+def psX(a, b):
+    return scipy.signal.csd(a, b,
+                            nperseg=128,
+                            detrend=None)
+
 def psXtime(dcm, ii):
     return psX(dcm[ii:,0],
                dcm[:-ii,0])
@@ -47,6 +52,15 @@ def psXtimeCTimeITri(dcm, ii):
     ITri=numpy.mean(numpy.abs(CTime),
                     axis=0)
     return ITri
+
+def psXtimeCTimeCTriR(dcm, ii):
+    ps=psXtime(dcm, ii)
+    CTime=numpy.mean(ps[1],
+                     axis=0)
+    CTri=numpy.mean(CTime,
+                    axis=0)
+    return CTri.real
+
 
 def psXmedCTimITri(dcm):
     ps=scipy.signal.csd(dcm[:,0],
@@ -68,12 +82,21 @@ def psXmedCTimCTri(dcm):
                     axis=0)
     return numpy.abs(CTri)
 
-def psXmedCTimCTriR(dcm):
+def psXmedCTimCTriR(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
                         dcm[:,1],
                         nperseg=128,
-                        detrend=None)    
+                        detrend=None,
+                        window=window)    
     CTim=numpy.mean(ps[1], axis=0)
     CTri=numpy.mean(CTim,
                     axis=0)
     return CTri.real
+
+def lmodel(fin):
+    """Load model as produced by cclosure"""
+    d=numpy.load(fin)
+    cc=d["phase"]
+    # Rotate axes so that the shape is (time x 1 x triad x channel)
+    cc=numpy.moveaxis(numpy.moveaxis(cc, 1, 0), -1, 0)
+    return cc
