@@ -72,26 +72,27 @@ def psXmedCTimITri(dcm):
                     axis=0)
     return ITri
 
-def psXmedCTimCTri(dcm):
+def psXmedCTimCTri(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
                         dcm[:,1],
                         nperseg=128,
-                        detrend=None)    
+                        detrend=None,
+                           window = window)    
     CTim=numpy.mean(ps[1], axis=0)
     CTri=numpy.mean(CTim,
                     axis=0)
-    return numpy.abs(CTri)
+    return numpy.fft.fftshift(numpy.abs(CTri))
 
 def psXmedCTimCTriR(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
                         dcm[:,1],
                         nperseg=128,
                         detrend=None,
-                        window=window)    
-    CTim=numpy.mean(ps[1], axis=0)
-    CTri=numpy.mean(CTim,
+                        window=window)   
+    CTim=numpy.median(ps[1], axis=0)
+    CTri=numpy.median(CTim,
                     axis=0)
-    return CTri.real
+    return numpy.fft.fftshift(CTri.real)
 
 def lmodel(fin):
     """Load model as produced by cclosure"""

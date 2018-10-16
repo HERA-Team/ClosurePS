@@ -1,4 +1,5 @@
 import matplotlib
+import numpy
 from matplotlib import pylab
 
 pylab.rc("savefig", dpi=300)
@@ -24,12 +25,13 @@ matplotlib.style.use('seaborn-paper')
 def mkfig():
     return pylab.figure(figsize=(5., 4.), dpi=200)
 
-def pp_ps(d, pf=""):
+def pp_ps(d, title=""):
     fig=mkfig()
     ax=fig.add_subplot(111)
-    pylab.semilogy(d)
+    xvar = numpy.arange(d.shape[0])-(d.shape[0]+1)/2
+    pylab.semilogy(xvar,d)
     ax.set_xlabel("Delay ( %f ns)" % (1e9/(100e6/1024) / 128,))
     ax.set_ylabel("Absolute mean cross-spectral power density ")
-    ax.set_title("PowerSpectrum  " )
+    ax.set_title("PowerSpectrum "+title )
     ax.xaxis.set_ticks_position('bottom')
     ax.grid()
