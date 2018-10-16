@@ -12,6 +12,7 @@ jupyter = "*"
 ipykernel = "*"
 matplotlib = "*"
 nbstripout = "*"
+elpy = "*"
 
 [requires]
 python_version = "3.6"
