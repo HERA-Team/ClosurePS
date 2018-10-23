@@ -22,7 +22,7 @@ plotstyle={ "capsize": 4, "capthick": 0.5, "elinewidth": 0.5}
 matplotlib.style.use('seaborn-paper')
 
 def mkfig():
-    return pylab.figure(figsize=(5., 4.), dpi=200)
+    return pylab.figure(figsize=(5., 4.), dpi=300)
 
 def pp_ps(d, pf=""):
     fig=mkfig()
@@ -38,3 +38,32 @@ def pp_ps(d, pf=""):
     ax.set_title("PowerSpectrum  " )
     ax.xaxis.set_ticks_position('bottom')
     ax.grid()
+
+def pp_wfl(dc, lst,
+           title="",
+           vrange=(None, None),
+           gg=False,
+           choff=0):
+    fig=pylab.figure(figsize=(8., 4.), dpi=300)
+    ax=fig.add_subplot(111)    
+    mappbl=ax.matshow(dc,
+                      vmin=vrange[0],
+                      vmax=vrange[1])
+    ax.set_xlabel("Channel Number")
+    ax.set_ylabel("LST (hours from midnight) ")
+    ax.set_title("Closure phase waterfall -- %s" % title)
+    yticks = ["{:2.2f}".format((l %1 ) * 24) for l in numpy.modf(lst)[0]]
+    ax.set_yticks(numpy.arange(len(yticks))[::50] )
+    ax.set_yticklabels(yticks[::50])
+
+    xticks = numpy.arange(dc.shape[1])[::50]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(["%i" % (xx+choff) for xx in xticks])  
+    ax.xaxis.set_ticks_position('bottom')
+    if gg:
+        ax.grid()    
+    cb=pylab.colorbar(mappbl)
+    cb.set_label("Closure phase (rad)")
+    
+
+    

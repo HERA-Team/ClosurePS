@@ -1,5 +1,28 @@
 import numpy
 
+if 0:
+    finXX=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedXX.npz")
+    XXm=mdays(finXX["closures"], 1)
+
+if 1:
+    pp_wfl(finXX["closures"][:,0,0], finXX["last"][:,0],
+           title="Day 0, triad 0")
+    pylab.savefig("plots/wfl_day0.png", bbox_inches='tight')
+    
+    pp_wfl(XXm[:,0,0], finXX["last"][:,0],
+           title="Median filtered across all days, triad 0")
+    pylab.savefig("plots/wfl_whole_med.png", bbox_inches='tight')
+
+    pp_wfl(XXm[:,0,0,500:750], finXX["last"][:,0],
+           title="Median filtered across all days, triad 0",
+           vrange=(-0.5,0.5),
+           gg=True,
+           choff=500)
+    pylab.savefig("plots/wfl_ribs.png", bbox_inches='tight')
+
+    XXms=XXm[150:250, :, 0, 120:380]
+
+
 
 if 0:
     fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedXX.npz")
@@ -78,14 +101,14 @@ if 0:
     pylab.savefig("plots/whatgoesin-tworecs-hf.png")
 
 # Look for x-corr between triads
-if 1:
+if 0:
     fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedYY.npz")
     dd=fin["closures"]
     pp11=mdays(dd[:,0:8], 1)
     pp12=mdays(dd[:,8:], 1)
     pp33=numpy.concatenate((pp11, pp12), axis=1)
 
-if 1:
+if 0:
     dw=numpy.exp(1j*pp33[150:250, :, :, 120:380])
 
 if 0:    
@@ -112,7 +135,7 @@ if 0:
     pylab.savefig("plots/tr10.png")
 
 
-if 1:
+if 0:
     pp_ps([(numpy.abs(psXTrCTimCTr(dw)), "scrambled"),
            (numpy.abs(psXTrCTimCTr(dw, shuffle=False)), "ordered")])
     pylab.savefig("plots/psXTrCTimCTr.png")
@@ -122,7 +145,7 @@ if 1:
     pylab.savefig("plots/psXmedCTimCTri.png")    
 
 
-if 1:
+if 0:
     fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedYY.npz")
     dd=fin["closures"]
     pp11=mdays(dd[:,0:8], 1)
@@ -130,7 +153,7 @@ if 1:
     shuffleax(pp12, 2)    
     pp33=numpy.concatenate((pp11, pp12), axis=1)
 
-if 1:
+if 0:
     dw2=numpy.exp(1j*pp33[150:250, :, :, 120:380])
 
     # cross triand cross days
