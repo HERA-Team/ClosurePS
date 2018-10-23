@@ -72,11 +72,12 @@ def psXmedCTimITri(dcm):
                     axis=0)
     return ITri
 
-def psXmedCTimCTri(dcm):
+def psXmedCTimCTri(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
                         dcm[:,1],
                         nperseg=128,
-                        detrend=None)    
+                        detrend=None,
+                        window=window)    
     CTim=numpy.mean(ps[1], axis=0)
     CTri=numpy.mean(CTim,
                     axis=0)
@@ -93,6 +94,22 @@ def psXmedCTimCTriR(dcm, window="hann"):
                     axis=0)
     return CTri.real
 
+def psXTrCTimCTr(dcm, window="hann",
+                 shuffle=True):
+    dcm=dcm.copy()
+    if shuffle:
+        #Scramble along the triad axis
+        dcm=shuffleax(dcm, 2)
+    ps=scipy.signal.csd(dcm[:,0,1:],
+                        dcm[:,0,:-1],
+                        nperseg=128,
+                        detrend=None,
+                        window=window)    
+    CTim=numpy.mean(ps[1], axis=0)
+    CTri=numpy.mean(CTim,
+                    axis=0)
+    return CTri
+
 def lmodel(fin):
     """Load model as produced by cclosure"""
     d=numpy.load(fin)
@@ -100,3 +117,9 @@ def lmodel(fin):
     # Rotate axes so that the shape is (time x 1 x triad x channel)
     cc=numpy.moveaxis(numpy.moveaxis(cc, 1, 0), -1, 0)
     return cc
+
+def shuffleax(d, ax):
+    """Shuffle along axis ax"""
+    dd=numpy.moveaxis(d, ax, 0)
+    numpy.random.shuffle(dd)
+    return numpy.moveaxis(dd, 0, ax)

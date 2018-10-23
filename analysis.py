@@ -76,3 +76,69 @@ if 0:
     pylab.plot(pp33[200,0,10,FR[0]:FR[1]])
     pylab.plot(pp33[201,0,10,FR[0]:FR[1]])
     pylab.savefig("plots/whatgoesin-tworecs-hf.png")
+
+# Look for x-corr between triads
+if 1:
+    fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedYY.npz")
+    dd=fin["closures"]
+    pp11=mdays(dd[:,0:8], 1)
+    pp12=mdays(dd[:,8:], 1)
+    pp33=numpy.concatenate((pp11, pp12), axis=1)
+
+if 1:
+    dw=numpy.exp(1j*pp33[150:250, :, :, 120:380])
+
+if 0:    
+    dwp=psX(dw[:, :, 0, 120:380],
+            dw[:, :, 20, 120:380])
+    pp_ps(numpy.transpose(dwp[1][:,0]))    
+    pylab.savefig("plots/trxcor-1.png")
+
+    p1=numpy.mean(dwp[1], axis=0)
+    print (p1.shape)
+    pp_ps(p1[0])    
+    pylab.savefig("plots/trxcor-2.png")        
+
+
+if 0:
+    pylab.clf()
+    pylab.plot(dw[0,0,0])
+    pylab.plot(dw[0,0,1])
+    pylab.savefig("plots/tr01.png")
+
+    pylab.clf()
+    pylab.plot(dw[0,0,0])
+    pylab.plot(dw[0,0,10])
+    pylab.savefig("plots/tr10.png")
+
+
+if 1:
+    pp_ps([(numpy.abs(psXTrCTimCTr(dw)), "scrambled"),
+           (numpy.abs(psXTrCTimCTr(dw, shuffle=False)), "ordered")])
+    pylab.savefig("plots/psXTrCTimCTr.png")
+
+    x1=psXmedCTimCTri(dw)
+    pp_ps(x1)
+    pylab.savefig("plots/psXmedCTimCTri.png")    
+
+
+if 1:
+    fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedYY.npz")
+    dd=fin["closures"]
+    pp11=mdays(dd[:,0:8], 1)
+    pp12=mdays(dd[:,8:], 1)
+    shuffleax(pp12, 2)    
+    pp33=numpy.concatenate((pp11, pp12), axis=1)
+
+if 1:
+    dw2=numpy.exp(1j*pp33[150:250, :, :, 120:380])
+
+    # cross triand cross days
+    x2=psXmedCTimCTri(dw2,
+                      window="hamming")
+    pp_ps([ (numpy.abs(x1), "first half X second half same triad"),
+            (numpy.abs(x2), "first half X second half random  triad")])
+    pylab.savefig("plots/psec-xdayxtriad.png")        
+
+    
+    

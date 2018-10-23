@@ -27,7 +27,12 @@ def mkfig():
 def pp_ps(d, pf=""):
     fig=mkfig()
     ax=fig.add_subplot(111)
-    pylab.semilogy(d)
+    if type(d) is list:
+        for dd,dl in d:
+            pylab.semilogy(dd, label=dl)
+            ax.legend()
+    else:
+        pylab.semilogy(d)
     ax.set_xlabel("Delay ( %f ns)" % (1e9/(100e6/1024) / 128,))
     ax.set_ylabel("Absolute mean cross-spectral power density ")
     ax.set_title("PowerSpectrum  " )
