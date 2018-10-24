@@ -65,5 +65,22 @@ def pp_wfl(dc, lst,
     cb=pylab.colorbar(mappbl)
     cb.set_label("Closure phase (rad)")
     
-
-    
+def pp_cps(dl,
+           choff=0,
+           title=""):
+    fig=pylab.figure(figsize=(8., 4.), dpi=300)
+    ax=fig.add_subplot(111)
+    if type(dl) is list:
+        for dd,dll in dl:
+            pylab.plot(dd, label=dll, marker=".",
+                       linestyle="-",
+                       linewidth=0.3,
+                       alpha=0.5)
+        ax.legend()
+        xticks = numpy.arange(dl[0][0].shape[0])[::100]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(["%i" % (xx+choff) for xx in xticks])  
+    ax.xaxis.set_ticks_position('bottom')        
+    ax.set_xlabel("Channel Number")
+    ax.set_ylabel("Closure phase (rad)")
+    ax.set_title("Closure phase spectrum -- %s" % title)    

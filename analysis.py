@@ -4,7 +4,7 @@ if 0:
     finXX=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedXX.npz")
     XXm=mdays(finXX["closures"], 1)
 
-if 1:
+if 0:
     pp_wfl(finXX["closures"][:,0,0], finXX["last"][:,0],
            title="Day 0, triad 0")
     pylab.savefig("plots/wfl_day0.png", bbox_inches='tight')
@@ -22,7 +22,32 @@ if 1:
 
     XXms=XXm[150:250, :, 0, 120:380]
 
+if 0:
+    pp11=mdays(finXX["closures"][:,0:9], 1)
+    pp12=mdays(finXX["closures"][:,9:], 1)
+    pp33=numpy.concatenate((pp11, pp12), axis=1)
 
+if 0:
+    pylab.clf()
+    pp_cps([ (pp11[208, 0, 0, 120:900], "First half of days"),
+             (pp12[208, 0, 0, 120:900], "Second half of days")],
+           choff=120)
+    pylab.ylim((-0.75, 0.75))
+    pylab.savefig("plots/specs_median_halves.png")
+
+if 0:
+    finEWXX=numpy.load("/bigfast/temp1/hera2/jck/LinEWXX.npz")
+    EWXXm=mdays(finEWXX["closures"],1)
+
+if 1:
+    for ii in [2,4,6,8]:
+        pylab.clf()
+        x=EWXXm[175:(175+4*ii),0,0,120:900]
+        pp_cps([ (x.reshape( (-1, ii, 780)).mean(axis=1)[i], "record %i" % i) for i in range(4)],
+               choff=120,
+               title="%i consecutive records average" % ii)
+        pylab.ylim((-0.75, 0.75))
+        pylab.savefig("plots/specs_tstep-%i.png" % ii , bbox_inches='tight')
 
 if 0:
     fin=numpy.load("/bigfast/temp1/hera2/jck/EQ14binnedXX.npz")
