@@ -158,11 +158,11 @@ def mkuvfits(fin):
     else:
         c.trc( "[Eval] ", "mkuvfits", fin, " -> ", hh)
         UV = pyuvdata.UVData()
-        UV.read_miriad(fin,'miriad')
+        UV.read_miriad(fin)
         UV.phase_to_time(UV.time_array[0])
         tempf=repo.mktemp()
         os.remove(tempf)
-        UV.write_uvfits(tempf,'uvfits')
+        UV.write_uvfits(tempf)
         if not os.path.exists(tempf):
             raise RuntimeError("No output produced by mkuvfits !")
         return repo.put(tempf, hh)
