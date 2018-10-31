@@ -7,12 +7,16 @@ import shutil
 import pyuvdata
 import heracasa.closure as hc
 import inspect
+import multiprocessing
 import numpy as np
 
 from astropy.time import Time
 #File location specification
 DataDir="/rds/project/bn204/rds-bn204-asterics/HERA/data"
 c.repo.REPODIR="/rds/project/bn204/rds-bn204-asterics/cache"
+
+#Multiprocessing specification
+NUMBER_OF_CORES = 16
 
 #processing specification
 ProcessData=True
@@ -133,8 +137,37 @@ def copyfileoutput(dsin,dsout,extension):
     return fout
 	
 ###############################
+
+
+def multiprocess_wrapper(files,d):
+
+    for f in files:
+        genclosurephase(f,trlist=inTriads,alist=inAntenna)
+
+
+
 def main():
-    f=[genclosurephase(fn,trlist=inTriads,alist=inAntenna) for fn in InData]
+
+
+    
+    files_per_core = len(InData) / NUMBER_OF_CORES
+    split_files = [InData[i:i+files_per_core] for i in range(0, len(InData), files_per_core)]
+    remainder_files = InData[files_per_core * NUMBER_OF_CORES:len(InData)]
+
+    jobs = []
+
+    for i, list_slice in enumerate(split_files):
+        print(list_slice)
+        j = multiprocessing.Process(target=multiprocess_wrapper, args=(list_slice,'a'))
+        jobs.append(j)
+
+    for job in jobs:
+        job.start()
+
+    for file in remainder_files:
+        genclosurephase(file,trlist=inTriads,alist=inAntenna)
+    
+#    f=[genclosurephase(fn,trlist=inTriads,alist=inAntenna) for fn in InData]
 #    fi = [c.importuvfits(fn) for fn in f]
 #    fif = [c.flagdata(fn, autocorr=True) for fn in fi]
 #    fifc = [mkclosurephase(fn,trlist=inTriads,alist=inAntenna) for fn in fif]
