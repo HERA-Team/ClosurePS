@@ -6,13 +6,13 @@
 # This script takes a directory of closure files outputted from recipe using
 # heracasa (Bojan Nikolic, bn204@cam.ac.uk), and from there bins them so that
 # closure measurements over successive days are aligned in LST.
-#
 
-
+from __future__ import print_function
 
 from astropy.time import Time
 import matplotlib.pyplot as plt
 import os
+import sys
 import numpy
 import argparse
 import textwrap
@@ -72,8 +72,8 @@ class LST_Binner(object):
     def __init__(self,
                  lst_array,
                  closure_dict,
-                 lst_start = 0,
-                 lst_range = 15,
+                 lst_start,
+                 lst_end,
                  triad_no = 26,
                  channels = 1024):
         """
@@ -102,7 +102,7 @@ class LST_Binner(object):
         self.lst_array = lst_array
         self.closure_dict = closure_dict
         self.lst_start = lst_start
-        self.lst_range = lst_range
+        self.lst_end = lst_end
         self.triad_no = triad_no
         self.channels = channels
         #Our output arrays for our LST binned data.
@@ -115,6 +115,17 @@ class LST_Binner(object):
         self.std_dev_lst = None
         self.std_dev_triad = None
 
+
+        # Calculate lst_array indices from lst_start lst_end
+        lst_subset = self.lst_array[0,:]
+        lst_subset = lst_subset % 1
+        lst_subset = lst_subset * 24
+        ind_range = numpy.argwhere((lst_subset>self.lst_start)&(lst_subset<self.lst_end))
+        self.lst_start_ind = numpy.min(ind_range)
+        self.lst_end_ind = numpy.max(ind_range)
+        self.lst_range = ind_range.shape[0]        
+        self.lst_range = self.lst_end_ind - self.lst_start_ind
+        
     def __project_unit_circle(self,closures):
         """
         Project angular data onto unit circle / convert to cartesian
@@ -206,19 +217,15 @@ class LST_Binner(object):
             for lst in range(self.lst_range):
                 
                 
-                lst_index = self.lst_array[i,self.lst_start+lst]
-                self.outlst_array[lst,i] = lst_index 
+                lst_index = self.lst_array[i,self.lst_start_ind+lst]
+                self.outlst_array[lst,i] = (lst_index %1) * 24 # Convert to fractional hours.
                 closures_at_lst = self.closure_dict[date][lst_index]['phase']
                 flags_at_lst = self.closure_dict[date][lst_index]['flags']
                 
-                #print(numpy.shape(closures_at_lst))
-                #print(lst_index)
-
                 self.data_array[lst,i,:,:] = closures_at_lst
                 self.flag_array[lst,i,:,:] = flags_at_lst
                 self.triad_array = self.closure_dict[date][lst_index]['triads']
 
-        print(self.outlst_array)
         if average == True:
             self.averaged_data_array = self.__average_circular(self.data_array,1)
 
@@ -363,8 +370,8 @@ class LST_Alignment(object):
         | - Date_1 - LST_1 - 'phase' - [Numpy Array]
         |                  - 'flags' - [Numpy Array]
         |                  - 'triads' - [Numpy Array]
-        |	   - LST_2	
-        |
+        |	       - LST_2	
+        |          - LST_N 
         | - Date_2 - LST_1
         |
         | - etc
@@ -374,6 +381,8 @@ class LST_Alignment(object):
         closure_dict = {}
      #Only works in Python 2.x
         for date, npz_files in sorted(self.date_dict.iteritems()):
+            print(".",end="")
+            sys.stdout.flush()
             closure_dict[date] = {}
             for npz_file in npz_files:
                 with numpy.load(self.closure_directory + npz_file) as data:
@@ -415,18 +424,18 @@ class LST_Alignment(object):
         i = 0
         initial_date, initial_lsts = sorted(closures.iteritems())[0]
         for date, lst_s in sorted(closures.iteritems()):
-            
+            print(".",end="")
+            sys.stdout.flush()
+            #print(lst_s)
+            #print(len(lst_s))
             for j,lst in enumerate(sorted(lst_s)):
                 lst_array[i,j] = lst
             i = i + 1
         
-        print(lst_array)
-
         #Align LST's.
 
         offset_array = numpy.zeros(shape=(len(closures.keys())))
         datelist = reversed(self.date_set)
-        print(datelist)
         prev_date = None
         for i, date in enumerate(reversed(self.date_set)):
 
@@ -440,7 +449,7 @@ class LST_Alignment(object):
         offset_array = numpy.rint(offset_array)
         offset_array = numpy.flipud(offset_array)
         offset_array = offset_array.astype(int)
-        print offset_array
+        #print(offset_array)
         
         for i in range(numpy.shape(lst_array)[0]):
             
@@ -463,15 +472,18 @@ class LST_Alignment(object):
         LST's, which can be used by the LST_Binner class to extract closures of
         choice across successive days.
         """
-
+        print("Aggregating closure dictionary to array (can take a while)...")
         closure_dict = self.__extract_closures()
+        print("done")
         #print closure_dict
         lst_ref = self.date_set[0]
+        #print(lst_ref)
         lst_ref = closure_dict[lst_ref] #We interpolate to the LST's from the first day of observations.
-        #print lst_ref
-        print(len(lst_ref))    
+        #print(lst_ref)
+        print(len(lst_ref))
+        print("Performing alignment...")
         aligned_lsts = self.__align_closures(lst_ref, closure_dict)
-
+        print("done")
         return aligned_lsts, closure_dict
         
 
@@ -510,7 +522,7 @@ class Julian_Parse(object):
 
     
     # We assume all .npz files have 60 timestamps in them.
-    def __init__(self, filepaths, npz_size = 60):
+    def __init__(self, filepaths, date_start, date_end, npz_size = 60):
 
         """
         Initialises the Julian Parse Class which takes a full directory of 
@@ -519,6 +531,8 @@ class Julian_Parse(object):
         """
 
         self.filepaths = filepaths
+        self.date_start = date_start
+        self.date_end = date_end
         self.file_dict = None
         self.date_set = None
 
@@ -540,7 +554,6 @@ class Julian_Parse(object):
             detected_datestamps.append(file.split('.')[1])
         detected_datestamps = set(detected_datestamps) # Convert list to set.
         detected_datestamps = sorted(detected_datestamps) # Convert set to ordered list.
-        print(detected_datestamps)
         return(detected_datestamps)
 
     # Takes set of datestamps and filepaths and sorts them into a dict.
@@ -570,21 +583,32 @@ class Julian_Parse(object):
             file_dict[datestamp] = sorted(file_dict[datestamp]) #Holy shit this just works? How awesome is that.
         #print(file_dict)
         return(file_dict)
-        
-    # This builds a dictionary of all unique datestamps and their .npz files.
+
+
+    
+    # This builds a dictionary of all unique datestamps and their .npz files
     def break_up_datestamps(self):
 
         """
         Breaks up the directory of .npz files into a dictionary, keyed by date.
 
         """
-               
+        print("Parsing closure directory... ", end="")       
         detected_datestamps = self.__find_unique_dates(self.filepaths)
+        print("done")
+        print("Discovering dates within specified range...", end="")
+        detected_datestamps = sorted(list(filter(lambda el: int(el) >= self.date_start and int(el) <= self.date_end, detected_datestamps)))
+        print("done")
+        print("Detected Dates: ")
+        print(detected_datestamps)
+        print("Building dictionary of dates and filepaths...", end="")
         file_dict = self.__build_closure_dict(detected_datestamps, self.filepaths)
+        print("done")
         self.file_dict = file_dict
+        print(self.file_dict.keys())
         self.date_set = detected_datestamps
 
-    # Returns dicionary.
+    # Returns dictionary.
     def return_datestamps(self):
 
         """
@@ -615,16 +639,22 @@ def main():
     deviations, which can be helpful in telling you if you there are days/times/triads
     that are not behaving as wanted.
 '''))
-    command.add_argument('filepath', help = ('.npz files generated from miriad files and ran through heracasa'))
+    command.add_argument('filepath', help = ('Directory of .npz files generated from heracasa'))
     command.add_argument('working_directory', help = ('where aligned .npz files will be put.'))
+    command.add_argument('--output_file',required=False, default='output_bin',metavar='O', type=str,
+                         help='Output file name.')
     command.add_argument('--average', action='store_true',required=False, 
                          help='Calculate average across LSTs.')
     command.add_argument('--std_dev', action='store_true',required=False, 
                          help='Calculate standard deviations across LSTs.')
-    command.add_argument('--lst_start', required=True, metavar='S', type = int,
-                         help='Start index of LSTs, bit of trial and error to get it right..')
-    command.add_argument('--lst_range', required=True, metavar='R', type = int,
-                         help='Range of LSTs (number of columns) to bin.')
+    command.add_argument('--lst_start', required=True, metavar='S', type = float,
+                         help='Start of LSTs, in fractional hours (3.2, 23.1 etc).')
+    command.add_argument('--lst_end', required=True, metavar='R', type = float,
+                         help='End of LSTs, in fractional hours (3.4, 23.5 etc).')
+    command.add_argument('--date_start', required=True, metavar='R', type = int,
+                         help='Start date for alignment.')
+    command.add_argument('--date_end', required=True, metavar='R', type=int,
+                         help='End date for alignment.')
     command.add_argument('--triad_number', required=True, metavar='T', type = int,
                          help='Number of triads to align')
     command.add_argument('--channel_number',required=False,default=1024, metavar='C', type = int,
@@ -640,22 +670,22 @@ def main():
 
         if file.endswith(".npz"):
             files.append(file)
-
-    #for file in files:
-    #    print(file.split('.')[1])
-
-    # Instantiate Julian_Parse class, and get files/dates
-    parser = Julian_Parse(files)
+ 
+    parser = Julian_Parse(files,args.date_start,args.date_end)
     parser.break_up_datestamps()
     files, dates = parser.return_datestamps()
+
+    print("Number of days: %d"%len(dates))
     # Instantiate LST_alignment class and align timestamps.
+    print("Aligning LST's (use first day as reference)...")
     aligner = LST_Alignment(args.filepath,dates,files)
     aligned_lsts, closures = aligner.align_timestamps()
-        
     # Instantiate LST_binner class class, then bin LSTS and save to file.
-    binner = LST_Binner(aligned_lsts, closures, lst_start=args.lst_start, lst_range=args.lst_range,triad_no=args.triad_number,channels=args.channel_number)
+    print("Bin LST's and extract our fields of interest...")
+    binner = LST_Binner(aligned_lsts, closures, lst_start=args.lst_start, lst_end=args.lst_end,triad_no=args.triad_number,channels=args.channel_number)
     binner.bin_lsts(average=args.average,std_dev=args.std_dev)
-    binner.save_binned_lsts(args.working_directory+"output_bin.npz")
+    print("done")
+    binner.save_binned_lsts(args.working_directory+args.output_file+".npz")
     
 
 if __name__=="__main__":
