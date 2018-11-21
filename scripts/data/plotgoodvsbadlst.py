@@ -71,16 +71,27 @@ def main():
 
             plt.imshow(std_dev[0,:,:])
 
-            xticks = ["{:2.3f}".format((lst %1 ) * 24) for lst in all_last]
+
+            all_lsth = [(lst%1) * 24 for lst in all_last]
+            all_lsth = numpy.asarray(all_lsth)
+            integer_ticks = []
+            for i,tick in enumerate(all_lsth):
+                if tick - numpy.floor(tick) < 0.003:
+                    integer_ticks.append(i)
+                    all_lsth[i] = numpy.floor(tick)
+            xticks = ["{:2.1f}".format(lst) for lst in all_lsth]
             ax.set_xticks(numpy.arange(0,numpy.shape(all_last)[0]))
             ax.set_xticklabels(xticks)
             for label in ax.xaxis.get_ticklabels():
-                label.set_visible(False)
-            for label in ax.xaxis.get_ticklabels()[::500]:
-                label.set_visible(True)    
+                label.set_visible(False)                
+            for i in integer_ticks:
+                ax.axvline(i, linestyle='--', color='k')
+                label = ax.xaxis.get_ticklabels()[i]
+                label.set_visible(True)
+            
                     #ax.set_xticklabels(["{:6.4f}".format(i) for i in all_last])
             plt.ylabel("Channel")
-            plt.xlabel("LST")
+            plt.xlabel("Local Sidereal Time")
             # ax.set_xlabel((all_last[0],all_last[-1]))
             plt.clim(0,2.5)
             plt.colorbar(orientation='horizontal')
@@ -146,16 +157,26 @@ def main():
 
         plt.imshow(std_dev[0,:,:])
 
-        xticks = ["{:2.3f}".format((lst %1 ) * 24) for lst in all_last]
+
+        all_lsth = [(lst%1) * 24 for lst in all_last]
+        all_lsth = numpy.asarray(all_lsth)
+        integer_ticks = []
+        for i,tick in enumerate(all_lsth):
+            if tick - numpy.floor(tick) < 0.003:
+                integer_ticks.append(i)
+                all_lsth[i] = numpy.floor(tick)
+        xticks = ["{:2.1f}".format(lst) for lst in all_lsth]
         ax.set_xticks(numpy.arange(0,numpy.shape(all_last)[0]))
         ax.set_xticklabels(xticks)
         for label in ax.xaxis.get_ticklabels():
-            label.set_visible(False)
-        for label in ax.xaxis.get_ticklabels()[::500]:
-            label.set_visible(True)    
-        #ax.set_xticklabels(["{:6.4f}".format(i) for i in all_last])
+            label.set_visible(False)                
+        for i in integer_ticks:
+            ax.axvline(i, linestyle='--', color='k')
+            label = ax.xaxis.get_ticklabels()[i]
+            label.set_visible(True)
+           
         plt.ylabel("Channel")
-        plt.xlabel("LST")
+        plt.xlabel("Local Sidereal Time")
         # ax.set_xlabel((all_last[0],all_last[-1]))
         plt.clim(0,2.5)
         plt.colorbar(orientation='horizontal')
