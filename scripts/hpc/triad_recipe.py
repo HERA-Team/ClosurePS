@@ -49,6 +49,41 @@ InData = sorted(InData)
 ###############################
 
 
+def makemsfile(fin,**kwargs):
+    
+    print(fin)
+    hh = c.hf(makemsfile, fin)
+    mm = repo.get(hh)
+    print(mm)
+    if mm:
+        c.trc( "[Cached]", "makemsfile", fin)
+    else:
+        c.trc( "[Eval] ", "makemsfile", fin, " -> ", hh)
+        UV = pyuvdata.UVData()
+        UV.read_miriad(fin)
+        UV.phase_to_time(Time(UV.time_array[0], format='jd', scale='utc'))
+        tempf = repo.mktemp()
+        os.remove(tempf)
+        UV.write_uvfits(tempf, spoof_nonessential=True)
+        if not os.path.exists(tempf):
+            raise RuntimeError("No output produced by mkuvfits!")
+        foms = c.importuvfits(tempf)
+        os.remove(tempf)
+        #flms = c.flagdata(foms,autocorr=True)
+        mm = repo.put(foms, hh)
+    return(mm)
+
+def genclosurephase(fin,**kwargs):
+
+    mm=makemsfile(fin,kwargs)
+    fout=os.path.split(fin)[-1]+".npz"    
+    r=hc.closurePh(mm,trlist=inTriads,alist=inAntenna)
+    np.savez(fout,**r)
+    if not os.path.exists(fout):
+        raise RuntimeError("No output produced by hc.closurePh !")
+
+    return(fout)
+
 def genclosurephase(fin,**kwargs):
     print(fin)
     hh = c.hf(genclosurephase, fin)
