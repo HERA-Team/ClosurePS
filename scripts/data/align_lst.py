@@ -18,6 +18,7 @@ import argparse
 import textwrap
 
 
+
 class LST_Binner(object):
 
     """
@@ -111,10 +112,7 @@ class LST_Binner(object):
         self.data_array = None
         self.flag_array = None
         self.triad_array = None
-        self.averaged_data_array = None
-        self.std_dev_lst = None
-        self.std_dev_triad = None
-
+        self.sigclip_array = None
 
         # Calculate lst_array indices from lst_start lst_end
         lst_subset = self.lst_array[0,:]
@@ -140,44 +138,64 @@ class LST_Binner(object):
 
         return numpy.cos(closures),numpy.sin(closures)
 
-    def __stddev_circular(self,closures,axis):
+    def __calc_R(self, x, y, axis=0):
+        averaged_x = numpy.mean(x,axis=axis)
+        averaged_y = numpy.mean(y,axis=axis)
+        return numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
+
+    def __sigma_clip_triads(self, closures, chan_threshold=100, sigma=1.0):
         """
-        Finds the standard deviation of the angular data using the defined
-        statistics for a von Mises distribution on the unit circle, or a 
-        wrapped gaussian.
+        Takes closures and runs a circular sigma clip across them. 
+        If a particular triad is not behaving at a particular record/day
+        in > chan_threshold channels, then put a 1 in a flag array.
 
         Inputs:
 
-        closures    [Numpy Array] Binned closures of shape [lst, day,
-                     triad, channel]
-        axis        [Integer] Which axis of [closures] to find std_dev over.
+        closures       [Numpy Array] Binned closures of shape 
+                       [lst, day, trid, channel]
+        chan_threshold [Integer] Number of channels that a triad 
+                       is off in before a flag gets set.
+        sigma          [Float] Sigma value  to exceed before a triad
+                       is considered errant.
+
+        Returns:
+
+        fl             [Numpy Array][Bool] Flag array.
+
+        """
+        cls = closures.shape[:3]
+        flr = numpy.zeros(shape=closures.shape,dtype=numpy.bool)
+
+        for t in numpy.arange(closures.shape[0]):
+            for d in numpy.arange(closures.shape[1]):
+                for c in numpy.arange(closures.shape[3]):
+                    tr = closures[t,d,:,c]
+                    tr_x, tr_y = self.__project_unit_circle(tr)
+                    averaged_x = numpy.mean(tr_x)
+                    averaged_y = numpy.mean(tr_y)
+                    
+                    r = numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
+                    av_ang = numpy.arctan2(averaged_y,averaged_x)
+                    sigma = numpy.sqrt(-2 * numpy.log(r))
+
+                    for triad in numpy.arange(closures.shape[2]):
+                        if numpy.abs(closures[t,d,triad,c] - av_ang) > sigma:
+                            flr[t,d,triad,c] == True
+
+        agg = numpy.zeros(shape=cls,dtype=numpy.int32)
+
+        for t in numpy.arange(flr.shape[0]):
+            for d in numpy.arange(flr.shape[1]):
+                for tr in numpy.arange(flr.shape[2]):
+                    for c in numpy.arange(flr.shape[3]):
+                        if flr[t,d,tr,c] == True:
+                            agg[t,d,tr]+=1
+        fl = agg
+        return fl
+                    
+
         
-        """
-
-
-        closures_x, closures_y = self.__project_unit_circle(closures)
-        averaged_x = numpy.mean(closures_x,axis=axis)
-        averaged_y = numpy.mean(closures_y,axis=axis)
-        r = numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
-        return numpy.sqrt(-2 * numpy.log(r))
-
-    def __average_circular(self,closures,axis):
-        """
-        Takes the average angle of angular closure data.
-
-        Inputs:
-
-        closures    [Numpy Array] Binned closures of shape [lst, day,
-                     triad, channel]
-        axis        [Integer] Which axis of [closures] to average over.
-        """
-
-        closures_x, closures_y = self.__project_unit_circle(closures)
-        averaged_x = numpy.mean(closures_x,axis=axis)
-        averaged_y = numpy.mean(closures_y,axis=axis)
-        return numpy.arctan2(averaged_y, averaged_x)
-    
-    def bin_lsts(self,average=False,std_dev=False):
+    def bin_lsts(self,sigclip=False):
         
         """
         Takes our binned LST_Array and uses it to index our dictionary of all
@@ -186,9 +204,7 @@ class LST_Binner(object):
 
         Inputs:
 
-        average   [Bool] Wether to average across LST's or not.
-        std_dev   [Bool] Wether to calculate std_deviations across both
-                  LST's and Triads(to check redundancy) or not.
+        sigclip   [Bool] Wether to mark out poor triads using a sigma clip based strategy.
         """
 
         # Describes the days in our LST bins
@@ -208,14 +224,11 @@ class LST_Binner(object):
                                       dtype=numpy.int8)
         # Our triads.
         self.triad_array = numpy.zeros(shape=(self.triad_no, 3))
-        
-                                        
-        xvar = numpy.arange(0,1024)
+        print("    Extracting Fields of Interest... ", end="")
+        sys.stdout.flush()
         for i, date in enumerate(sorted(self.closure_dict.keys())):
             self.day_array[i] = int(date)
-
             for lst in range(self.lst_range):
-                
                 
                 lst_index = self.lst_array[i,self.lst_start_ind+lst]
                 self.outlst_array[lst,i] = (lst_index %1) * 24 # Convert to fractional hours.
@@ -225,15 +238,12 @@ class LST_Binner(object):
                 self.data_array[lst,i,:,:] = closures_at_lst
                 self.flag_array[lst,i,:,:] = flags_at_lst
                 self.triad_array = self.closure_dict[date][lst_index]['triads']
-
-        if average == True:
-            self.averaged_data_array = self.__average_circular(self.data_array,1)
-
-        if std_dev == True:
-            self.std_dev_lst = self.__stddev_circular(self.data_array,1)
-            self.std_dev_triad = self.__stddev_circular(self.data_array,2)
-
-        
+        print("done")
+        if sigclip == True:
+            print("    Sigma Clipping... ", end="")
+            sys.stdout.flush()
+            self.sigclip_array = self.__sigma_clip_triads(self.data_array)
+            print("done")
 
     def save_binned_lsts(self,filename):
 
@@ -246,30 +256,13 @@ class LST_Binner(object):
         """
 
         if self.day_array is not None:
-            if (self.averaged_data_array is None) and (self.std_dev_lst is None):
+            if (self.sigclip_array is None):
                 numpy.savez(filename,
                             days=self.day_array,
                             last=self.outlst_array,
                             closures=self.data_array,
                             flags=self.flag_array,
                             triads=self.triad_array)
-            elif (self.averaged_data_array is not None) and (self.std_dev_lst is None):
-                numpy.savez(filename,
-                            days=self.day_array,
-                            last=self.outlst_array,
-                            closures=self.data_array,
-                            flags=self.flag_array,
-                            triads=self.triad_array,
-                            averaged_closures=self.averaged_data_array)
-            elif (self.averaged_data_array is None) and (self.std_dev_lst is not None):
-                numpy.savez(filename,
-                            days=self.day_array,
-                            last=self.outlst_array,
-                            closures=self.data_array,
-                            flags=self.flag_array,
-                            triads=self.triad_array,
-                            std_dev_lst=self.std_dev_lst,
-                            std_dev_triad=self.std_dev_triad)
             else:
                 numpy.savez(filename,
                             days=self.day_array,
@@ -277,17 +270,10 @@ class LST_Binner(object):
                             closures=self.data_array,
                             flags=self.flag_array,
                             triads=self.triad_array,
-                            averaged_closures=self.averaged_data_array,
-                            std_dev_lst=self.std_dev_lst,
-                            std_dev_triad=self.std_dev_triad)
-                            
-            
-        
+                            sigclip=self.sigclip_array)                            
+                 
         else:
             raise ValueError("LST's not binned")
-
-
-
 
 class LST_Alignment(object):
     """
@@ -322,9 +308,6 @@ class LST_Alignment(object):
                            returns them.
 
     TODO: Implement destructive alignment.
-    TODO: Implement the flags?
-    TODO: Package triad information through as well?
-    TODO: ^^^^^ Fix Alignment before these ^^^
     """
 
     def __init__(self,
@@ -358,6 +341,7 @@ class LST_Alignment(object):
         self.timestamp_delta = sidereal_delta / integration_time
         self.delta_ind = int(round(self.timestamp_delta)) #Get closest indice
         self.delta_rem = self.timestamp_delta % 1
+        self.triad_no = 0
 
 
     def __extract_closures(self):
@@ -392,6 +376,8 @@ class LST_Alignment(object):
                     lsts = data['LAST']
                     
                     phases = data['phase']
+                    if self.triad_no == 0:
+                        self.triad_no = phases.shape[0]
                     flags = data['flags']
                     triads = data['tr']
                     for i,lst in enumerate(lsts):
@@ -438,7 +424,6 @@ class LST_Alignment(object):
         datelist = reversed(self.date_set)
         prev_date = None
         for i, date in enumerate(reversed(self.date_set)):
-
             if i == 0:
                 offset_array[i] = 0
             else:
@@ -449,13 +434,9 @@ class LST_Alignment(object):
         offset_array = numpy.rint(offset_array)
         offset_array = numpy.flipud(offset_array)
         offset_array = offset_array.astype(int)
-        #print(offset_array)
         
-        for i in range(numpy.shape(lst_array)[0]):
-            
+        for i in range(numpy.shape(lst_array)[0]):    
             lst_array[i] = numpy.roll(lst_array[i], offset_array[i]) #Bit of a hatchet job...
-            
-
 
         # Because of the fact HERA only observes for part of the day, we end up with some records
         # eventually "drifting" out of our aligned LST window. As we roll the array to do the
@@ -643,10 +624,8 @@ def main():
     command.add_argument('working_directory', help = ('where aligned .npz files will be put.'))
     command.add_argument('--output_file',required=False, default='output_bin',metavar='O', type=str,
                          help='Output file name.')
-    command.add_argument('--average', action='store_true',required=False, 
-                         help='Calculate average across LSTs.')
-    command.add_argument('--std_dev', action='store_true',required=False, 
-                         help='Calculate standard deviations across LSTs.')
+    command.add_argument('--sigma_clip', action='store_true', required=False,
+                         help='Flags triads based on a sigma clipping flagging strategy.')
     command.add_argument('--lst_start', required=True, metavar='S', type = float,
                          help='Start of LSTs, in fractional hours (3.2, 23.1 etc).')
     command.add_argument('--lst_end', required=True, metavar='R', type = float,
@@ -655,8 +634,6 @@ def main():
                          help='Start date for alignment.')
     command.add_argument('--date_end', required=True, metavar='R', type=int,
                          help='End date for alignment.')
-    command.add_argument('--triad_number', required=True, metavar='T', type = int,
-                         help='Number of triads to align')
     command.add_argument('--channel_number',required=False,default=1024, metavar='C', type = int,
                          help='Number of channels')
     args = command.parse_args()
@@ -681,9 +658,9 @@ def main():
     aligner = LST_Alignment(args.filepath,dates,files)
     aligned_lsts, closures = aligner.align_timestamps()
     # Instantiate LST_binner class class, then bin LSTS and save to file.
-    print("Bin LST's and extract our fields of interest...")
-    binner = LST_Binner(aligned_lsts, closures, lst_start=args.lst_start, lst_end=args.lst_end,triad_no=args.triad_number,channels=args.channel_number)
-    binner.bin_lsts(average=args.average,std_dev=args.std_dev)
+    print("Bin LST's...")
+    binner = LST_Binner(aligned_lsts, closures, lst_start=args.lst_start, lst_end=args.lst_end,triad_no=aligner.triad_no,channels=args.channel_number)
+    binner.bin_lsts(sigclip=args.sigma_clip)
     print("done")
     binner.save_binned_lsts(args.working_directory+args.output_file+".npz")
     
