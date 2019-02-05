@@ -226,6 +226,7 @@ class LST_Binner(object):
         self.triad_array = numpy.zeros(shape=(self.triad_no, 3))
         print("    Extracting Fields of Interest... ", end="")
         sys.stdout.flush()
+        
         for i, date in enumerate(sorted(self.closure_dict.keys())):
             self.day_array[i] = int(date)
             for lst in range(self.lst_range):
@@ -412,14 +413,11 @@ class LST_Alignment(object):
         for date, lst_s in sorted(closures.iteritems()):
             print(".",end="")
             sys.stdout.flush()
-            #print(lst_s)
-            #print(len(lst_s))
             for j,lst in enumerate(sorted(lst_s)):
                 lst_array[i,j] = lst
             i = i + 1
-        
+            
         #Align LST's.
-
         offset_array = numpy.zeros(shape=(len(closures.keys())))
         datelist = reversed(self.date_set)
         prev_date = None
@@ -434,10 +432,9 @@ class LST_Alignment(object):
         offset_array = numpy.rint(offset_array)
         offset_array = numpy.flipud(offset_array)
         offset_array = offset_array.astype(int)
-        
         for i in range(numpy.shape(lst_array)[0]):    
             lst_array[i] = numpy.roll(lst_array[i], offset_array[i]) #Bit of a hatchet job...
-
+        
         # Because of the fact HERA only observes for part of the day, we end up with some records
         # eventually "drifting" out of our aligned LST window. As we roll the array to do the
         # alignment we can mask off these loose ends. 
@@ -503,8 +500,8 @@ class Julian_Parse(object):
 
     
     # We assume all .npz files have 60 timestamps in them.
-    def __init__(self, filepaths, date_start, date_end, npz_size = 60):
-
+    def __init__(self, filepaths, date_start, date_end, exclude_days,npz_size = 60):
+ 
         """
         Initialises the Julian Parse Class which takes a full directory of 
         heracasa .npz files and splits them by date.
@@ -514,6 +511,7 @@ class Julian_Parse(object):
         self.filepaths = filepaths
         self.date_start = date_start
         self.date_end = date_end
+        self.exclude_days = exclude_days
         self.file_dict = None
         self.date_set = None
 
@@ -579,6 +577,9 @@ class Julian_Parse(object):
         print("done")
         print("Discovering dates within specified range...", end="")
         detected_datestamps = sorted(list(filter(lambda el: int(el) >= self.date_start and int(el) <= self.date_end, detected_datestamps)))
+        for excluded_date in self.exclude_days:
+            print(excluded_date)
+            detected_datestamps = filter(lambda el: int(el) != int(excluded_date), detected_datestamps)
         print("done")
         print("Detected Dates: ")
         print(detected_datestamps)
@@ -634,6 +635,7 @@ def main():
                          help='Start date for alignment.')
     command.add_argument('--date_end', required=True, metavar='R', type=int,
                          help='End date for alignment.')
+    command.add_argument('--exclude_days', required=False, metavar='E', nargs='*', default='', help='Explicitly excluse any days in range. Specify as "2458102 2458114" etc')
     command.add_argument('--channel_number',required=False,default=1024, metavar='C', type = int,
                          help='Number of channels')
     args = command.parse_args()
@@ -648,7 +650,7 @@ def main():
         if file.endswith(".npz"):
             files.append(file)
  
-    parser = Julian_Parse(files,args.date_start,args.date_end)
+    parser = Julian_Parse(files,args.date_start,args.date_end,args.exclude_days)
     parser.break_up_datestamps()
     files, dates = parser.return_datestamps()
 
