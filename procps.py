@@ -34,6 +34,16 @@ def mdays(dc, n):
     # Rotate axes so days are in position 1 again
     return numpy.moveaxis(dnew, 2, 1)
 
+def mtriads(dc, n):
+    """Median across Triads
+
+    Compute cmedn across the triads axis. Needed because cmedn is N^2
+    memory scaling
+    """
+    dnew=numpy.array([[cmedn(dc[i,:,j], axis=0, n=n) for j in range(dc.shape[2])] for i in range(dc.shape[0])])
+    # Rotate axes so days are in position 1 again
+    return numpy.moveaxis(dnew, 2, 1)
+
 def psX(a, b):
     return scipy.signal.csd(a, b,
                             nperseg=128,
@@ -73,6 +83,46 @@ def psXmedCTimITri(dcm):
     return ITri
 
 def psXmedCTimCTri(dcm, window="hann"):
+    
+    hann_window = numpy.square(scipy.signal.hanning(dcm.shape[-1]))
+    print(hann_window.shape)
+    dcm = dcm * hann_window
+    ps=scipy.signal.csd(dcm[:,0],
+                        dcm[:,1],
+                        nperseg=128,
+                        detrend=None)    
+    CTim=numpy.mean(ps[1], axis=0)
+    CTri=numpy.mean(CTim,
+                    axis=0)
+    return numpy.fft.fftshift(numpy.abs(CTri))/128
+
+def psXmedCTim(dcm, window="hann"):
+  
+    hann_window = numpy.square(scipy.signal.hanning(dcm.shape[-1]))
+    print(hann_window.shape)
+    dcm = dcm * hann_window
+    ps=scipy.signal.csd(dcm[:,0],
+                        dcm[:,1],
+                        nperseg=128,
+                        detrend=None)    
+    CTim=numpy.mean(ps[1], axis=0)
+    return numpy.fft.fftshift(numpy.abs(CTim),axes=-1)/128
+
+def psXmedCTimHS(dcm, window="hann"):
+    
+    hann_window = numpy.square(scipy.signal.hanning(dcm.shape[-1]))
+    print(hann_window.shape)
+    dcm = dcm * hann_window
+    ps=scipy.signal.csd(dcm[:,0],
+                        dcm[:,1],
+                        nperseg=128,
+                        detrend=None)    
+    CTim=numpy.mean(ps[1], axis=0)
+    return numpy.fft.fftshift(numpy.abs(CTim),axes=-1)/128
+
+
+
+def psXmedCTimCTriRaw(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
                         dcm[:,1],
                         nperseg=128,
@@ -81,7 +131,7 @@ def psXmedCTimCTri(dcm, window="hann"):
     CTim=numpy.mean(ps[1], axis=0)
     CTri=numpy.mean(CTim,
                     axis=0)
-    return numpy.fft.fftshift(numpy.abs(CTri))
+    return CTri
 
 def psXmedCTimCTriR(dcm, window="hann"):
     ps=scipy.signal.csd(dcm[:,0],
@@ -92,7 +142,18 @@ def psXmedCTimCTriR(dcm, window="hann"):
     CTim=numpy.median(ps[1], axis=0)
     CTri=numpy.median(CTim,
                     axis=0)
-    return numpy.fft.fftshift(CTri.real)
+    return numpy.fft.fftshift(CTri.real)/128
+
+def psXmedCTimCTriC(dcm, window="hann"):
+    ps=scipy.signal.csd(dcm[:,0],
+                        dcm[:,1],
+                        nperseg=128,
+                        detrend=None,
+                           window = window)    
+    CTim=numpy.mean(ps[1], axis=0)
+    CTri=numpy.mean(CTim,
+                    axis=0)
+    return numpy.fft.fftshift(CTri)/128
 
 def lmodel(fin):
     """Load model as produced by cclosure"""
