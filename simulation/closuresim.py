@@ -35,6 +35,7 @@ def altaz_to_dircos(alt,az):
     m = numpy.cos(alt) * numpy.sin(phi)
     n = numpy.sqrt(1.0 - l*l - m*m) - 1.0
     return l,m,n
+
 def dircos_to_altaz(l,m):
     
     n = numpy.sqrt(1.0 - l*l - m*m) - 1.0
@@ -77,11 +78,45 @@ def generate_hera_layout_simple():
     layout_vec[10] = numpy.asarray([0,-12.1243,0])
     layout_vec[11] = numpy.asarray([14,-12.1243,0])
     layout_vec[12] = numpy.asarray([-7,-24.2486,0])
-    layout_vec[13] = numpy.asarray([7,-24.2486,0])
-
-    
-    
+    layout_vec[13] = numpy.asarray([7,-24.2486,0])  
     return layout_vec
+
+def generate_hera_layout_large(rows=11,width=10):
+    
+    antennas = width
+    
+    for row in numpy.arange(1,rows/2):
+        antennas += 2*(width - row)
+
+    layout_vec = numpy.zeros(shape=(int(antennas),3))
+    width_vec = numpy.arange(int(-rows/2),int(rows/2)+1)
+    widths = width-numpy.abs(width_vec)
+    #print(widths)
+    #print(antennas)
+    
+    layout_ind = 0
+    height = 12.1243*(rows-1)/2
+    for row in numpy.arange(rows):
+
+        row_width = widths[row]
+        row_widths = 0.5 + numpy.abs(numpy.arange(0,row_width)) - row_width/2
+        #print(row_widths)
+        for width in row_widths:
+            arr = numpy.asarray([width*14,height,0])
+            #print(arr)
+            layout_vec[layout_ind] = arr
+            layout_ind += 1
+        height -= 12.1243
+
+    print("Antennas: ",layout_ind)
+    return layout_vec
+
+#def find_eq14_triads(layout_vec,rows=11,width=10):
+    
+    
+    
+
+
 
 from scipy.stats import norm
 
@@ -727,3 +762,37 @@ def generate_airy_power_beams_with_sidelobes(no_of_beams,sf,gain_sigma):
 
     
     return ls,ms,beams_matrix,av_beam_error
+
+
+### GLEAM Interpretation Functions
+
+def find_gleam_sources(source_dataframe,lst,latitude,jy_threshold):
+    ra = numpy.radians(source_dataframe['RAJ2000'])
+    dec = numpy.radians(source_dataframe['DEJ2000'])
+    ha,dec = radec_to_hadec(ra,dec,lst)
+    alt,az = hadec_to_altaz(ha,dec,latitude)
+    
+    #First threshold by finding everything above the horizon.
+    
+    above_horizon = alt > 0
+    #print(above_horizon.shape)
+    #alts = alt[above_horizon]
+    #azs = az[above_horizon]
+    
+    # Now threshold by the jansky's
+    jy = source_dataframe['Fint143']
+    jy_above_threshold = jy > jy_threshold
+    
+    sky_sources = numpy.logical_and(above_horizon,jy_above_threshold)
+    
+    # Now extract from pandas into normal numpy arrays
+    alts = alt[sky_sources].values
+    azs = az[sky_sources].values
+    jys = jy[sky_sources].values
+    
+    print("Number of Sources: ",alts.shape)
+    gleam_sources = {'alt':alts,
+                    'az': azs,
+                    'jy': jys}
+    
+    return gleam_sources
