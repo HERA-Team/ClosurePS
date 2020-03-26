@@ -73,9 +73,10 @@ def pp_cps(dl,
     ax=fig.add_subplot(111)
     if type(dl) is list:
         for dd,dll in dl:
-            pylab.plot(dd, label=dll, marker=".",
-                       linestyle="None",
-                       linewidth=0.3,
+            pylab.plot(dd, label=dll,
+                       marker=".",
+                       linestyle="-",
+                       linewidth=0.5,
                        alpha=alpha)
         ax.legend()
         xticks = numpy.arange(dl[0][0].shape[0])[::100]
