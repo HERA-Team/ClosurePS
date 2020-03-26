@@ -1,20 +1,20 @@
 import matplotlib
-from matplotlib import pylab
+from matplotlib import pyplot
 
-pylab.rc("savefig", dpi=300)
-pylab.rc("path", simplify=True)
-pylab.rc("font", family="serif")
-pylab.rc("mathtext", fontset ="custom")
-pylab.rc("text", usetex=False)
+pyplot.rc("savefig", dpi=300)
+pyplot.rc("path", simplify=True)
+pyplot.rc("font", family="serif")
+pyplot.rc("mathtext", fontset ="custom")
+pyplot.rc("text", usetex=False)
 
 
 for x in ["xtick", "ytick"]:
-    pylab.rc(x+".major", size=6, width=1)
-    pylab.rc(x+".minor", size=3, width=1)
+    pyplot.rc(x+".major", size=6, width=1)
+    pyplot.rc(x+".minor", size=3, width=1)
 
-pylab.rc("lines", markeredgewidth= 1)
+pyplot.rc("lines", markeredgewidth= 1)
 
-pylab.rc("legend", numpoints=1, frameon= False, handletextpad=   0.3)
+pyplot.rc("legend", numpoints=1, frameon= False, handletextpad=   0.3)
 
 plotstyle={ "capsize": 4, "capthick": 0.5, "elinewidth": 0.5}
 
@@ -22,17 +22,17 @@ plotstyle={ "capsize": 4, "capthick": 0.5, "elinewidth": 0.5}
 matplotlib.style.use('seaborn-paper')
 
 def mkfig():
-    return pylab.figure(figsize=(5., 4.), dpi=300)
+    return pyplot.figure(figsize=(5., 4.), dpi=300)
 
 def pp_ps(d, pf=""):
     fig=mkfig()
     ax=fig.add_subplot(111)
     if type(d) is list:
         for dd,dl in d:
-            pylab.semilogy(dd, label=dl)
+            pyplot.semilogy(dd, label=dl)
             ax.legend()
     else:
-        pylab.semilogy(d)
+        pyplot.semilogy(d)
     ax.set_xlabel("Delay ( %f ns)" % (1e9/(100e6/1024) / 128,))
     ax.set_ylabel("Absolute mean cross-spectral power density ")
     ax.set_title("PowerSpectrum  " )
@@ -44,7 +44,7 @@ def pp_wfl(dc, lst,
            vrange=(None, None),
            gg=False,
            choff=0):
-    fig=pylab.figure(figsize=(8., 4.), dpi=300)
+    fig=pyplot.figure(figsize=(8., 4.), dpi=300)
     ax=fig.add_subplot(111)    
     mappbl=ax.matshow(dc,
                       vmin=vrange[0],
@@ -62,18 +62,18 @@ def pp_wfl(dc, lst,
     ax.xaxis.set_ticks_position('bottom')
     if gg:
         ax.grid()    
-    cb=pylab.colorbar(mappbl)
+    cb=pyplot.colorbar(mappbl)
     cb.set_label("Closure phase (rad)")
     
 def pp_cps(dl,
            choff=0,
            title="",
            alpha=0.5):
-    fig=pylab.figure(figsize=(8., 4.), dpi=300)
+    fig=pyplot.figure(figsize=(8., 4.), dpi=300)
     ax=fig.add_subplot(111)
     if type(dl) is list:
         for dd,dll in dl:
-            pylab.plot(dd, label=dll,
+            pyplot.plot(dd, label=dll,
                        marker=".",
                        linestyle="-",
                        linewidth=0.5,
@@ -91,8 +91,8 @@ def pp_avar(ddl, fnameout, tl,
             inttime=10.7668):
     lines = ["-","--","-.",":"]
     linecycler = cycle(lines)
-    pylab.close("all")
-    f, axl=pylab.subplots(len(ddl),
+    pyplot.close("all")
+    f, axl=pyplot.subplots(len(ddl),
                           sharex=True,
                           sharey=False,
                           figsize=(8, 4), dpi=300)
