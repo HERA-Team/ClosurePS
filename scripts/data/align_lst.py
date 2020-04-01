@@ -17,264 +17,8 @@ import numpy
 import argparse
 import textwrap
 
+LST_DP = 6
 
-
-class LST_Binner(object):
-
-    """
-    Class that takes the aligned LSTs and a dictionary of ALL the closures from
-    all input days and concatenates them together and outputs them as a
-    single numpy array.
-    
-    Attributes:
-
-    lst_array     [Numpy array] This is an array of all aligned LSTS. We take the columns
-                  of this to index {closure_dict} to get the closure phases for the 
-                  correct LST.
-
-    closure_dict  [Dictionary] Two-layer dictionary, keyed by date then by LST. 
-                  Contains the closure phases as a [Numpy array] of shape 
-                  (no_triads,no_channels).
-
-    lst_start     [Integer] Column index for [lst_array] to output binned LST's from.
-
-    lst_range     [Integer] Range of LST's to bin.
-
-    triad_no      [Integer] Number of triads in closure phases in [closure_dict].
-
-    channels      [Integer] Number of channels in closure phases in [closure_dict].
-
-    day_array     [Numpy array] of shape (no_days). Gives UTC Dates.
-    
-    outlst_array  [Numpy array] of shape (no_lsts,no_days)Exact LST's of closures outputted.
-
-    data_array    [Numpy array] of shape (no_lsts,no_days,no_triads,no_channels). Contains 
-                  closure phases.
-
-    flag_array    [Numpy array] of shape (no_lsts,no_days,no_triads,no_channels). Contains
-                  individual channel flags from the real time processor(RTP).
-
-    triad_array   [Numpy array] of shape (no_triads,3). Contains antennas which make up the
-                  individual triads.
-
-    Member Functions:
-
-    __init__() Initialises an instance of class LST_Binner
-
-    __bin_lsts() Where the magic happens. Takes our aligned LST's and outputs the closures.
-
-    __save_binned_lsts() Saves day_array, outlst_array and data_array to a .npz file.
-
-
-    TODO: Work out what to do with the bits on the end we don't care about.
-    TODO: Averaging    
-    """
-
-    def __init__(self,
-                 lst_array,
-                 closure_dict,
-                 lst_start,
-                 lst_end,
-                 triad_no = 26,
-                 channels = 1024):
-        """
-        Instantiates the LST_Binner class which takes a numpy array of aligned LST's and
-        a dictionary describing all of our closure data and outputs the items of interest.
-
-        Inputs:
-
-        lst_array     [Numpy Array] Array of aligned LST's. Individual elements used as 
-                      keys for closure_dict.
-
-        closure_dict  [Dictionary] Three-layer dictionary with all the closure information,
-                      as well as flags, triads, days etc.
-
-        lst_start     [Integer] Column index for [lst_array] to output binned LST's from.
-
-        lst_range     [Integer] Range of LST's to bin.
-
-        triad_no      [Integer] Number of triads in dataset.
-
-        channels      [Integer] Number of frequency channels.
-
-        """
-
-        #Parameters
-        self.lst_array = lst_array
-        self.closure_dict = closure_dict
-        self.lst_start = lst_start
-        self.lst_end = lst_end
-        self.triad_no = triad_no
-        self.channels = channels
-        #Our output arrays for our LST binned data.
-        self.day_array = None
-        self.outlst_array = None
-        self.data_array = None
-        self.flag_array = None
-        self.triad_array = None
-        self.sigclip_array = None
-
-        # Calculate lst_array indices from lst_start lst_end
-        lst_subset = self.lst_array[0,:]
-        lst_subset = lst_subset % 1
-        lst_subset = lst_subset * 24
-        ind_range = numpy.argwhere((lst_subset>self.lst_start)&(lst_subset<self.lst_end))
-        self.lst_start_ind = numpy.min(ind_range)
-        self.lst_end_ind = numpy.max(ind_range)
-        self.lst_range = ind_range.shape[0]        
-        self.lst_range = self.lst_end_ind - self.lst_start_ind
-        
-    def __project_unit_circle(self,closures):
-        """
-        Project angular data onto unit circle / convert to cartesian
-        co-ordinates.
-
-        Inputs:
-
-        closures    [Numpy Array] Binned closures of shape [lst, day,
-                     triad, channel]
-
-        """
-
-        return numpy.cos(closures),numpy.sin(closures)
-
-    def __calc_R(self, x, y, axis=0):
-        averaged_x = numpy.mean(x,axis=axis)
-        averaged_y = numpy.mean(y,axis=axis)
-        return numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
-
-    def __sigma_clip_triads(self, closures, chan_threshold=100, sigma=1.0):
-        """
-        Takes closures and runs a circular sigma clip across them. 
-        If a particular triad is not behaving at a particular record/day
-        in > chan_threshold channels, then put a 1 in a flag array.
-
-        Inputs:
-
-        closures       [Numpy Array] Binned closures of shape 
-                       [lst, day, trid, channel]
-        chan_threshold [Integer] Number of channels that a triad 
-                       is off in before a flag gets set.
-        sigma          [Float] Sigma value  to exceed before a triad
-                       is considered errant.
-
-        Returns:
-
-        fl             [Numpy Array][Bool] Flag array.
-
-        """
-        cls = closures.shape[:3]
-        flr = numpy.zeros(shape=closures.shape,dtype=numpy.bool)
-
-        for t in numpy.arange(closures.shape[0]):
-            for d in numpy.arange(closures.shape[1]):
-                for c in numpy.arange(closures.shape[3]):
-                    tr = closures[t,d,:,c]
-                    tr_x, tr_y = self.__project_unit_circle(tr)
-                    averaged_x = numpy.mean(tr_x)
-                    averaged_y = numpy.mean(tr_y)
-                    
-                    r = numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
-                    av_ang = numpy.arctan2(averaged_y,averaged_x)
-                    sigma = numpy.sqrt(-2 * numpy.log(r))
-
-                    for triad in numpy.arange(closures.shape[2]):
-                        if numpy.abs(closures[t,d,triad,c] - av_ang) > sigma:
-                            flr[t,d,triad,c] == True
-
-        agg = numpy.zeros(shape=cls,dtype=numpy.int32)
-
-        for t in numpy.arange(flr.shape[0]):
-            for d in numpy.arange(flr.shape[1]):
-                for tr in numpy.arange(flr.shape[2]):
-                    for c in numpy.arange(flr.shape[3]):
-                        if flr[t,d,tr,c] == True:
-                            agg[t,d,tr]+=1
-        fl = agg
-        return fl
-                    
-
-        
-    def bin_lsts(self,sigclip=False):
-        
-        """
-        Takes our binned LST_Array and uses it to index our dictionary of all
-        closures. Then extracts the LST's of interest and saves them to 
-        day_array, outlst_array, data_array. See class description.
-
-        Inputs:
-
-        sigclip   [Bool] Wether to mark out poor triads using a sigma clip based strategy.
-        """
-
-        # Describes the days in our LST bins
-        self.day_array = numpy.zeros(shape=len(self.closure_dict.keys()))
-        # Gives exact LST's for our aligned bins (for reference)
-        self.outlst_array = numpy.zeros(shape=(self.lst_range, len(self.closure_dict.keys())))
-        # Final concatenated closure phases, aligned by LST
-        self.data_array = numpy.zeros(shape=(self.lst_range,
-                                        len(self.closure_dict.keys()),
-                                        self.triad_no,
-                                        self.channels))
-        # All of the RTP flags, aligned with closure phases.
-        self.flag_array = numpy.zeros(shape=(self.lst_range,
-                                        len(self.closure_dict.keys()),
-                                        self.triad_no,
-                                        self.channels),
-                                      dtype=numpy.int8)
-        # Our triads.
-        self.triad_array = numpy.zeros(shape=(self.triad_no, 3))
-        print("    Extracting Fields of Interest... ", end="")
-        sys.stdout.flush()
-        
-        for i, date in enumerate(sorted(self.closure_dict.keys())):
-            self.day_array[i] = int(date)
-            for lst in range(self.lst_range):
-                
-                lst_index = self.lst_array[i,self.lst_start_ind+lst]
-                self.outlst_array[lst,i] = (lst_index %1) * 24 # Convert to fractional hours.
-                closures_at_lst = self.closure_dict[date][lst_index]['phase']
-                flags_at_lst = self.closure_dict[date][lst_index]['flags']
-                
-                self.data_array[lst,i,:,:] = closures_at_lst
-                self.flag_array[lst,i,:,:] = flags_at_lst
-                self.triad_array = self.closure_dict[date][lst_index]['triads']
-        print("done")
-        if sigclip == True:
-            print("    Sigma Clipping... ", end="")
-            sys.stdout.flush()
-            self.sigclip_array = self.__sigma_clip_triads(self.data_array)
-            print("done")
-
-    def save_binned_lsts(self,filename):
-
-        """
-        Takes our binned closures and outputs them to a .npz file.
-
-        Inputs:
-
-        filename    [String] Filename to save .npz file.
-        """
-
-        if self.day_array is not None:
-            if (self.sigclip_array is None):
-                numpy.savez(filename,
-                            days=self.day_array,
-                            last=self.outlst_array,
-                            closures=self.data_array,
-                            flags=self.flag_array,
-                            triads=self.triad_array)
-            else:
-                numpy.savez(filename,
-                            days=self.day_array,
-                            last=self.outlst_array,
-                            closures=self.data_array,
-                            flags=self.flag_array,
-                            triads=self.triad_array,
-                            sigclip=self.sigclip_array)                            
-                 
-        else:
-            raise ValueError("LST's not binned")
 
 class LST_Alignment(object):
     """
@@ -314,9 +58,11 @@ class LST_Alignment(object):
     def __init__(self,
                  closure_directory, 
                  ordered_dates, 
-                 date_dict, 
-                 integration_time=10.7, 
-                 sidereal_delta=235.909, 
+                 date_dict,
+                 lst_start,
+                 lst_end,
+                 integration_time=10.7374, 
+                 sidereal_delta=235.909,
                  destructive = True): 
         """
         Initialises the LST_Alignment Class which aligns the LST's over successive
@@ -339,10 +85,20 @@ class LST_Alignment(object):
         self.closure_directory = closure_directory
         self.date_set = ordered_dates
         self.date_dict = date_dict
-        self.timestamp_delta = sidereal_delta / integration_time
-        self.delta_ind = int(round(self.timestamp_delta)) #Get closest indice
+        self.integration_time = integration_time
+        self.timestamp_delta = sidereal_delta / self.integration_time
+        self.delta_ind = round(self.timestamp_delta) #Get closest indice
         self.delta_rem = self.timestamp_delta % 1
         self.triad_no = 0
+
+        self.lst_start = lst_start
+        self.lst_end = lst_end
+
+        # We need to tweak lst_end to make sure we get the same number
+        # of LST records each day.
+
+        self.remainder = (((self.lst_end - self.lst_start)*3600.)/self.integration_time)%1
+        self.lst_end = self.lst_end - (self.remainder * self.integration_time)/3600.
 
 
     def __extract_closures(self):
@@ -352,14 +108,13 @@ class LST_Alignment(object):
         which is keyed by both date and LST. Thus the key mechanism is as so:
 
         |
-        | - Date_1 - LST_1 - 'phase' - [Numpy Array]
-        |                  - 'flags' - [Numpy Array]
-        |                  - 'triads' - [Numpy Array]
-        |	       - LST_2	
-        |          - LST_N 
-        | - Date_2 - LST_1
-        |
-        | - etc
+        | - Date_1 - 'phase' - [Numpy Array]
+        |            'flags' - [Numpy Array]
+        |            'triads' - [Numpy Array]
+        | - Date_2 - 'phase' - [Numpy Array] 
+        |            'flags' - [Numpy Array] 
+        |            'triads' - [Numpy Array]
+        | - etc.
 
         """
 
@@ -369,24 +124,44 @@ class LST_Alignment(object):
             print(".",end="")
             sys.stdout.flush()
             closure_dict[date] = {}
+
+            last_concat = None
+            phases_concat = None
+            flags_concat = None
+            triads_ar = None
+            #print(npz_files)
+            # This is based on the that npz_files is sorted CORRECTLY
+            # in chronological order
             for npz_file in npz_files:
                 with numpy.load(self.closure_directory + npz_file) as data:
 
                     # LST's is used to build the keys of the second tree layer,
                     # as we want to organise by LST for our alignment.
-                    lsts = data['LAST']
-                    
+                    last = data['LAST']                    
+                    last = ((last%1)*24).round(decimals=LST_DP)
                     phases = data['phase']
                     if self.triad_no == 0:
                         self.triad_no = phases.shape[0]
                     flags = data['flags']
-                    triads = data['tr']
-                    for i,lst in enumerate(lsts):
-                        closure_dict[date][lst] = {} 
-                        closure_dict[date][lst]['phase'] = phases[:,0,:,i]
-                        closure_dict[date][lst]['flags'] = flags[:,0,:,i]
-                        closure_dict[date][lst]['triads'] = triads
-                        
+                    triads_ar = data['tr']
+
+                    try:
+                        last_concat = numpy.concatenate((last_concat,last),axis=0)
+                        phases_concat = numpy.concatenate((phases_concat,phases),axis=3)
+                        flags_concat = numpy.concatenate((flags_concat,flags),axis=3)
+                    except ValueError:
+                        last_concat = last
+                        phases_concat = phases
+                        flags_concat = flags
+            
+            #print(phases_concat.shape)
+            #print(flags_concat.shape)
+            #print(last_concat.shape)
+            closure_dict[date]['phase'] = phases_concat
+            closure_dict[date]['flags'] = flags_concat
+            closure_dict[date]['last'] = last_concat
+            closure_dict[date]['triads'] = triads_ar
+        #sys.exit(1)           
         return(closure_dict)
 
     def __align_closures(self, reference_lst, closures):
@@ -398,72 +173,195 @@ class LST_Alignment(object):
         Inputs:
 
         reference_lst  [Dictionary] First LST in dataset for reference. 
-                       Can get rid I think.
 
         closures       [Dictionary] Dictionary of all closures.
 
 
         TODO: Tidy this up, reference_lst not needed?
         """
-
+        print("Generating LST Array.. ",end='')
         #Generate Numpy array from closure_dictionary. Makes life significantly easier.
-        lst_array = numpy.zeros(shape=(len(closures.keys()),len(reference_lst)))
-        i = 0
-        initial_date, initial_lsts = sorted(closures.iteritems())[0]
-        for date, lst_s in sorted(closures.iteritems()):
-            print(".",end="")
-            sys.stdout.flush()
-            for j,lst in enumerate(sorted(lst_s)):
-                lst_array[i,j] = lst
-            i = i + 1
-            
-        #Align LST's.
-        offset_array = numpy.zeros(shape=(len(closures.keys())))
-        datelist = reversed(self.date_set)
-        prev_date = None
-        for i, date in enumerate(reversed(self.date_set)):
-            if i == 0:
-                offset_array[i] = 0
-            else:
-                date_delta = int(prev_date) - int(date)
-                offset_array[i] = offset_array[i-1] - (self.delta_ind - self.delta_rem)  * date_delta
-                
-            prev_date = date
-        offset_array = numpy.rint(offset_array)
-        offset_array = numpy.flipud(offset_array)
-        offset_array = offset_array.astype(int)
-        for i in range(numpy.shape(lst_array)[0]):    
-            lst_array[i] = numpy.roll(lst_array[i], offset_array[i]) #Bit of a hatchet job...
+
+        initial_date = sorted(closures.iteritems())[0]
+
+        reference_lst_array = reference_lst['last']
+        reference_phase_array = reference_lst['phase']
         
-        # Because of the fact HERA only observes for part of the day, we end up with some records
-        # eventually "drifting" out of our aligned LST window. As we roll the array to do the
-        # alignment we can mask off these loose ends. 
-        lst_array = numpy.ma.masked_array(lst_array)
-        unaligned_index = numpy.shape(lst_array)[1] + offset_array[0]
-        lst_array[:,unaligned_index:] = numpy.ma.masked
+#        ib = numpy.searchsorted(reference_lst_array,self.lst_start)
+#        ie = numpy.searchsorted(reference_lst_array,self.lst_end)
 
-        return lst_array
+        #We are searching a rotated array due to LST wrapping around at 24 hours.
+        zeroth_lst_index = numpy.argmin(reference_lst_array)        
+        #Make sure it's 0 hrs LST
+        if(reference_lst_array[zeroth_lst_index] < 0.0035):
+            last_lower = reference_lst_array[:zeroth_lst_index]
+            last_upper = reference_lst_array[zeroth_lst_index:]
+                
+            # Where we are aligning over zero lst, has to be carefully dealt with
+            # by using a standard divide and conquer approach
+            if(self.lst_start > self.lst_end):
+                ib = numpy.searchsorted(last_lower,self.lst_start)
+                ie = numpy.searchsorted(last_upper,self.lst_end)+zeroth_lst_index
+                
+#                if (ib == reference_lst_array.shape[0]) or (ib == 0):
+#                        print(last_lower)
 
+                    
+            else:
+                ib = numpy.searchsorted(last_lower,self.lst_start)
+                
+                if ib == 0:
+                    ib = numpy.searchsorted(last_upper,self.lst_start)+zeroth_lst_index
+#                    print(ib,end=" ")
+                    ie = numpy.searchsorted(last_upper,self.lst_end)+zeroth_lst_index
+#                    print(ie)
+
+        else:
+            ib = numpy.searchsorted(reference_lst_array,self.lst_start)
+#            print(ib,end=" ")
+            ie = numpy.searchsorted(reference_lst_array,self.lst_end)
+#            print(ie)
+        
+        last_length = ie-ib
+        dates = sum([1 for date in closures.iteritems()])
+        triad_no = reference_phase_array.shape[0]
+        channel_no = reference_phase_array.shape[2]
+        days_arr = numpy.asarray([date[0] for date in sorted(closures.iteritems())])
+        phases_subset_arr = numpy.zeros(shape=(triad_no,dates,channel_no,last_length))
+        flags_subset_arr = numpy.zeros(shape=(triad_no,dates,channel_no,last_length))
+        triads_arr = reference_lst['triads']
+        lst_subset_arr = numpy.zeros(shape=(dates,last_length))
+        bad_days = []
+
+        
+        for i,date in enumerate(sorted(closures.iteritems())):
+            print(".",end="")
+            #print(date)
+            datel = date[0]
+            last = closures[datel]['last']
+
+            is_sorted = numpy.logical_or.reduce(numpy.diff(last)>=0)
+#            print(is_sorted)            
+            phases = closures[datel]['phase']
+            flags = closures[datel]['flags']
+
+            #We are searching a rotated array due to LST wrapping around at 24 hours.
+            zeroth_lst_index = numpy.argmin(last)            
+            #Make sure its 0 hrs LST
+            if(last[zeroth_lst_index] < 0.0035):
+                last_lower = last[:zeroth_lst_index]
+                last_upper = last[zeroth_lst_index:]
+                
+                # Where we are aligning over zero lst, has to be carefully dealt with
+                # by using a standard divide and conquer approach
+                if(self.lst_start > self.lst_end):
+                    date_lst_lb = numpy.searchsorted(last_lower,self.lst_start)
+                    date_lst_ub = numpy.searchsorted(last_upper,self.lst_end)+zeroth_lst_index
+
+                    if (date_lst_lb == last.shape[0]) or (date_lst_lb == 0):
+                        print(last_lower)
+
+                    
+                else:
+                    date_lst_lb = numpy.searchsorted(last_lower,self.lst_start)
+
+                    if date_lst_lb == 0:
+                        date_lst_lb = numpy.searchsorted(last_upper,self.lst_start)+zeroth_lst_index
+                        date_lst_ub = numpy.searchsorted(last_upper,self.lst_end)+zeroth_lst_index
+
+            else:
+                date_lst_lb = numpy.searchsorted(last,self.lst_start)
+                date_lst_ub = numpy.searchsorted(last,self.lst_end)
+            # This looks messy but basically we just see if a day is within one record
+            # if not we say its a bad day and get rid of it.
+            try:
+                phases_subset_arr[:,i,:,:] = phases[:,0,:,date_lst_lb:date_lst_ub]
+                flags_subset_arr[:,i,:,:] = flags[:,0,:,date_lst_lb:date_lst_ub]
+                lst_subset_arr[i,:] = last[date_lst_lb:date_lst_ub]
+
+            except ValueError:
+                try:
+                    phases_subset_arr[:,i,:,:] = phases[:,0,:,date_lst_lb:date_lst_ub-1]
+                    flags_subset_arr[:,i,:,:] = flags[:,0,:,date_lst_lb:date_lst_ub-1]
+                    lst_subset_arr[i,:] = last[date_lst_lb:date_lst_ub-1]
+                except ValueError:
+
+                    try:
+                        phases_subset_arr[:,i,:,:] = phases[:,0,:,date_lst_lb:date_lst_ub+1]
+                        flags_subset_arr[:,i,:,:] = flags[:,0,:,date_lst_lb:date_lst_ub+1]
+                        lst_subset_arr[i,:] = last[date_lst_lb:date_lst_ub+1]
+                    except ValueError: # At this point we just assume the day's data is corrupted or unlike the others.
+#                        print("Bad day detected: ",datel)
+                        bad_days.append(i)
+                        continue
+
+        if len(bad_days) > 0:
+            bad_days = numpy.asarray(bad_days)
+            bad_days_list = [sorted(closures.iteritems())[bad_day][0] for bad_day in bad_days]
+            phases_subset_arr = numpy.delete(phases_subset_arr,bad_days,axis=1)
+            flags_subset_arr = numpy.delete(flags_subset_arr,bad_days,axis=1)
+            lst_subset_arr = numpy.delete(lst_subset_arr,bad_days,axis=0)
+            days_arr = numpy.delete(days_arr,bad_days,axis=0)
+        print("done")
+        if len(bad_days) > 0:
+            print("Bad Days detected: ",bad_days_list)
+            print("Final Days: ")
+            print(days_arr)
+        
+        self.flags = numpy.transpose(flags_subset_arr,(3,1,0,2))
+        self.phases = numpy.transpose(phases_subset_arr,(3,1,0,2))
+        self.last = lst_subset_arr
+        self.triads = triads_arr
+        self.days = days_arr
+
+        print("Final array shapes: ")
+        print(self.last.shape)
+        print(self.phases.shape)
+        print(self.flags.shape)
+        
+        
     def align_timestamps(self):
         """
         Generates the closure_dictionary and generates a numpy array of aligned
         LST's, which can be used by the LST_Binner class to extract closures of
         choice across successive days.
         """
-        print("Aggregating closure dictionary to array (can take a while)...")
+        print("Aggregating closure dictionary to array (can take a while)...",end="")
         closure_dict = self.__extract_closures()
         print("done")
         #print closure_dict
+
+#        print("LST Reference: ")
         lst_ref = self.date_set[0]
-        #print(lst_ref)
+#        print(lst_ref)
         lst_ref = closure_dict[lst_ref] #We interpolate to the LST's from the first day of observations.
         #print(lst_ref)
         print(len(lst_ref))
-        print("Performing alignment...")
-        aligned_lsts = self.__align_closures(lst_ref, closure_dict)
+        print("Performing alignment...", end="")
+        self.__align_closures(lst_ref, closure_dict)
         print("done")
-        return aligned_lsts, closure_dict
         
+
+    def save_binned_lsts(self,filename):
+        
+        """
+        Takes our binned closures and outputs them to a .npz file.
+
+        Inputs:
+
+        filename    [String] Filename to save .npz file.
+        """
+
+        if self.days is not None:
+            numpy.savez(filename,
+                        days=self.days,
+                        last=self.last,
+                        closures=self.phases,
+                        flags=self.flags,
+                        triads=self.triads)
+        else:
+            raise ValueError("LST's not binned")
+
 
 #This parses all of the files and breaks them up into datestamps. Each datestamp is then aligned correctly. 
 class Julian_Parse(object):
@@ -587,7 +485,6 @@ class Julian_Parse(object):
         file_dict = self.__build_closure_dict(detected_datestamps, self.filepaths)
         print("done")
         self.file_dict = file_dict
-        print(self.file_dict.keys())
         self.date_set = detected_datestamps
 
     # Returns dictionary.
@@ -649,24 +546,285 @@ def main():
 
         if file.endswith(".npz"):
             files.append(file)
- 
-    parser = Julian_Parse(files,args.date_start,args.date_end,args.exclude_days)
+
+    if args.exclude_days == '':
+        parser = Julian_Parse(files,args.date_start,args.date_end,args.exclude_days)
+    else:
+        print(args.exclude_days)
+        exclude_days_list=args.exclude_days[0].split(' ')
+        parser = Julian_Parse(files,args.date_start,args.date_end,exclude_days_list)
     parser.break_up_datestamps()
     files, dates = parser.return_datestamps()
 
     print("Number of days: %d"%len(dates))
     # Instantiate LST_alignment class and align timestamps.
     print("Aligning LST's (use first day as reference)...")
-    aligner = LST_Alignment(args.filepath,dates,files)
-    aligned_lsts, closures = aligner.align_timestamps()
-    # Instantiate LST_binner class class, then bin LSTS and save to file.
-    print("Bin LST's...")
-    binner = LST_Binner(aligned_lsts, closures, lst_start=args.lst_start, lst_end=args.lst_end,triad_no=aligner.triad_no,channels=args.channel_number)
-    binner.bin_lsts(sigclip=args.sigma_clip)
+    aligner = LST_Alignment(args.filepath,dates,files,args.lst_start,args.lst_end)
+    aligner.align_timestamps()
+    print("Saving Files...",end="")
+    aligner.save_binned_lsts(args.working_directory+args.output_file+".npz")
     print("done")
-    binner.save_binned_lsts(args.working_directory+args.output_file+".npz")
-    
 
 if __name__=="__main__":
     main()
 
+
+
+
+
+
+
+
+# class LST_Binner(object):
+
+#     """
+#     Class that takes the aligned LSTs and a dictionary of ALL the closures from
+#     all input days and concatenates them together and outputs them as a
+#     single numpy array.
+    
+#     Attributes:
+
+#     lst_array     [Numpy array] This is an array of all aligned LSTS. We take the columns
+#                   of this to index {closure_dict} to get the closure phases for the 
+#                   correct LST.
+
+#     closure_dict  [Dictionary] Two-layer dictionary, keyed by date then by LST. 
+#                   Contains the closure phases as a [Numpy array] of shape 
+#                   (no_triads,no_channels).
+
+#     lst_start     [Integer] Column index for [lst_array] to output binned LST's from.
+
+#     lst_range     [Integer] Range of LST's to bin.
+
+#     triad_no      [Integer] Number of triads in closure phases in [closure_dict].
+
+#     channels      [Integer] Number of channels in closure phases in [closure_dict].
+
+#     day_array     [Numpy array] of shape (no_days). Gives UTC Dates.
+    
+#     outlst_array  [Numpy array] of shape (no_lsts,no_days)Exact LST's of closures outputted.
+
+#     data_array    [Numpy array] of shape (no_lsts,no_days,no_triads,no_channels). Contains 
+#                   closure phases.
+
+#     flag_array    [Numpy array] of shape (no_lsts,no_days,no_triads,no_channels). Contains
+#                   individual channel flags from the real time processor(RTP).
+
+#     triad_array   [Numpy array] of shape (no_triads,3). Contains antennas which make up the
+#                   individual triads.
+
+#     Member Functions:
+
+#     __init__() Initialises an instance of class LST_Binner
+
+#     __bin_lsts() Where the magic happens. Takes our aligned LST's and outputs the closures.
+
+#     __save_binned_lsts() Saves day_array, outlst_array and data_array to a .npz file.
+
+
+#     TODO: Work out what to do with the bits on the end we don't care about.
+#     TODO: Averaging    
+#     """
+
+#     def __init__(self,
+#                  lst_array,
+#                  closure_dict,
+#                  lst_start,
+#                  lst_end,
+#                  triad_no = 26,
+#                  channels = 1024):
+#         """
+#         Instantiates the LST_Binner class which takes a numpy array of aligned LST's and
+#         a dictionary describing all of our closure data and outputs the items of interest.
+
+#         Inputs:
+
+#         lst_array     [Numpy Array] Array of aligned LST's. Individual elements used as 
+#                       keys for closure_dict.
+
+#         closure_dict  [Dictionary] Three-layer dictionary with all the closure information,
+#                       as well as flags, triads, days etc.
+
+#         lst_start     [Integer] Column index for [lst_array] to output binned LST's from.
+
+#         lst_range     [Integer] Range of LST's to bin.
+
+#         triad_no      [Integer] Number of triads in dataset.
+
+#         channels      [Integer] Number of frequency channels.
+
+#         """
+
+#         #Parameters
+#         self.lst_array = lst_array
+#         self.closure_dict = closure_dict
+#         self.lst_start = lst_start
+#         self.lst_end = lst_end
+#         self.triad_no = triad_no
+#         self.channels = channels
+#         #Our output arrays for our LST binned data.
+#         self.day_array = None
+#         self.outlst_array = None
+#         self.data_array = None
+#         self.flag_array = None
+#         self.triad_array = None
+#         self.sigclip_array = None
+
+#         # Calculate lst_array indices from lst_start lst_end
+#         lst_subset = self.lst_array[0,:].round(decimals=LST_DP)
+#         ind_range = numpy.argwhere((lst_subset>self.lst_start)&(lst_subset<self.lst_end))
+#         self.lst_start_ind = numpy.min(ind_range)
+#         self.lst_end_ind = numpy.max(ind_range)
+#         self.lst_range = self.lst_end_ind - self.lst_start_ind
+        
+#     def __project_unit_circle(self,closures):
+#         """
+#         Project angular data onto unit circle / convert to cartesian
+#         co-ordinates.
+
+#         Inputs:
+
+#         closures    [Numpy Array] Binned closures of shape [lst, day,
+#                      triad, channel]
+
+#         """
+
+#         return numpy.cos(closures),numpy.sin(closures)
+
+#     def __calc_R(self, x, y, axis=0):
+#         averaged_x = numpy.mean(x,axis=axis)
+#         averaged_y = numpy.mean(y,axis=axis)
+#         return numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
+
+#     def __sigma_clip_triads(self, closures, chan_threshold=100, sigma=1.0):
+#         """
+#         Takes closures and runs a circular sigma clip across them. 
+#         If a particular triad is not behaving at a particular record/day
+#         in > chan_threshold channels, then put a 1 in a flag array.
+
+#         Inputs:
+
+#         closures       [Numpy Array] Binned closures of shape 
+#                        [lst, day, trid, channel]
+#         chan_threshold [Integer] Number of channels that a triad 
+#                        is off in before a flag gets set.
+#         sigma          [Float] Sigma value  to exceed before a triad
+#                        is considered errant.
+
+#         Returns:
+
+#         fl             [Numpy Array][Bool] Flag array.
+
+#         """
+#         cls = closures.shape[:3]
+#         flr = numpy.zeros(shape=closures.shape,dtype=numpy.bool)
+
+#         for t in numpy.arange(closures.shape[0]):
+#             for d in numpy.arange(closures.shape[1]):
+#                 for c in numpy.arange(closures.shape[3]):
+#                     tr = closures[t,d,:,c]
+#                     tr_x, tr_y = self.__project_unit_circle(tr)
+#                     averaged_x = numpy.mean(tr_x)
+#                     averaged_y = numpy.mean(tr_y)
+                    
+#                     r = numpy.sqrt(numpy.square(averaged_x) + numpy.square(averaged_y))
+#                     av_ang = numpy.arctan2(averaged_y,averaged_x)
+#                     sigma = numpy.sqrt(-2 * numpy.log(r))
+
+#                     for triad in numpy.arange(closures.shape[2]):
+#                         if numpy.abs(closures[t,d,triad,c] - av_ang) > sigma:
+#                             flr[t,d,triad,c] == True
+
+#         agg = numpy.zeros(shape=cls,dtype=numpy.int32)
+
+#         for t in numpy.arange(flr.shape[0]):
+#             for d in numpy.arange(flr.shape[1]):
+#                 for tr in numpy.arange(flr.shape[2]):
+#                     for c in numpy.arange(flr.shape[3]):
+#                         if flr[t,d,tr,c] == True:
+#                             agg[t,d,tr]+=1
+#         fl = agg
+#         return fl
+                    
+
+        
+#     def bin_lsts(self,sigclip=False):
+        
+#         """
+#         Takes our binned LST_Array and uses it to index our dictionary of all
+#         closures. Then extracts the LST's of interest and saves them to 
+#         day_array, outlst_array, data_array. See class description.
+
+#         Inputs:
+
+#         sigclip   [Bool] Wether to mark out poor triads using a sigma clip based strategy.
+#         """
+
+#         # Describes the days in our LST bins
+#         self.day_array = numpy.zeros(shape=len(self.closure_dict.keys()))
+#         # Gives exact LST's for our aligned bins (for reference)
+#         self.outlst_array = numpy.zeros(shape=(self.lst_range, len(self.closure_dict.keys())))
+#         # Final concatenated closure phases, aligned by LST
+#         self.data_array = numpy.zeros(shape=(self.lst_range,
+#                                         len(self.closure_dict.keys()),
+#                                         self.triad_no,
+#                                         self.channels))
+#         # All of the RTP flags, aligned with closure phases.
+#         self.flag_array = numpy.zeros(shape=(self.lst_range,
+#                                         len(self.closure_dict.keys()),
+#                                         self.triad_no,
+#                                         self.channels),
+#                                       dtype=numpy.int8)
+#         # Our triads.
+#         self.triad_array = numpy.zeros(shape=(self.triad_no, 3))
+#         print("    Extracting Fields of Interest... ", end="")
+#         sys.stdout.flush()
+        
+#         for i, date in enumerate(sorted(self.closure_dict.keys())):
+#             self.day_array[i] = int(date)
+#             for lst in range(self.lst_range):
+                
+#                 lst_index = self.lst_array[i,self.lst_start_ind+lst]
+#                 self.outlst_array[lst,i] = lst_index
+#                 closures_at_lst = self.closure_dict[date][lst_index]['phase']
+#                 flags_at_lst = self.closure_dict[date][lst_index]['flags']
+                
+#                 self.data_array[lst,i,:,:] = closures_at_lst
+#                 self.flag_array[lst,i,:,:] = flags_at_lst
+#                 self.triad_array = self.closure_dict[date][lst_index]['triads']
+#         print("done")
+#         if sigclip == True:
+#             print("    Sigma Clipping... ", end="")
+#             sys.stdout.flush()
+#             self.sigclip_array = self.__sigma_clip_triads(self.data_array)
+#             print("done")
+
+#     def save_binned_lsts(self,filename):
+
+#         """
+#         Takes our binned closures and outputs them to a .npz file.
+
+#         Inputs:
+
+#         filename    [String] Filename to save .npz file.
+#         """
+
+#         if self.day_array is not None:
+#             if (self.sigclip_array is None):
+#                 numpy.savez(filename,
+#                             days=self.day_array,
+#                             last=self.outlst_array,
+#                             closures=self.data_array,
+#                             flags=self.flag_array,
+#                             triads=self.triad_array)
+#             else:
+#                 numpy.savez(filename,
+#                             days=self.day_array,
+#                             last=self.outlst_array,
+#                             closures=self.data_array,
+#                             flags=self.flag_array,
+#                             triads=self.triad_array,
+#                             sigclip=self.sigclip_array)                            
+                 
+#         else:
+#             raise ValueError("LST's not binned")
