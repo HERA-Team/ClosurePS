@@ -507,7 +507,7 @@ def main():
     HERA LST Aligner and Binner
 
     Author: James Kent
-    Institution: University of Cambridge, 2018
+    Institution: University of Cambridge, 2020
     Email: jck42@cam.ac.uk
 
     Takes a directory of heracasa created closure phases (best created using recipe), 
@@ -522,8 +522,6 @@ def main():
     command.add_argument('working_directory', help = ('where aligned .npz files will be put.'))
     command.add_argument('--output_file',required=False, default='output_bin',metavar='O', type=str,
                          help='Output file name.')
-    command.add_argument('--sigma_clip', action='store_true', required=False,
-                         help='Flags triads based on a sigma clipping flagging strategy.')
     command.add_argument('--lst_start', required=True, metavar='S', type = float,
                          help='Start of LSTs, in fractional hours (3.2, 23.1 etc).')
     command.add_argument('--lst_end', required=True, metavar='R', type = float,
@@ -533,8 +531,6 @@ def main():
     command.add_argument('--date_end', required=True, metavar='R', type=int,
                          help='End date for alignment.')
     command.add_argument('--exclude_days', required=False, metavar='E', nargs='*', default='', help='Explicitly excluse any days in range. Specify as "2458102 2458114" etc')
-    command.add_argument('--channel_number',required=False,default=1024, metavar='C', type = int,
-                         help='Number of channels')
     args = command.parse_args()
 
     if (os.path.exists(args.working_directory) == False):
@@ -543,7 +539,6 @@ def main():
     # Find all .npz files. Assume they are all from heracasa...
     files = []
     for file in os.listdir(args.filepath):
-
         if file.endswith(".npz"):
             files.append(file)
 
