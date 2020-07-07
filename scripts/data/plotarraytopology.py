@@ -30,13 +30,34 @@ def main():
 
     ant_x = ant_locs[:,0]
     ant_y = ant_locs[:,1]
+    
+    current_rot_angle = numpy.arctan2(ant_y[-1],ant_x[-1])
+    print("Current Rotation: ")
+    print(current_rot_angle)
+    
+    # Rotate antenna positions
+    angle_rot = -current_rot_angle
+    cost = numpy.cos(angle_rot)
+    sint = numpy.sin(angle_rot)
+    
+    xcost = ant_x * cost
+    xsint = ant_x * sint
+    ysint = ant_y * sint
+    ycost = ant_y * cost
+    
+    x_rot = xcost - ysint
+    y_rot = xsint + ycost
+    
 
-    fig, ax = plt.subplots()
-    ax.scatter(ant_x,ant_y)
+    fig, ax = plt.subplots(figsize=(8,8))
+    ax.scatter(x_rot,y_rot)
 
     for i,label in enumerate(ant_nums):
-        ax.annotate(label,(ant_x[i],ant_y[i]))
+        ax.annotate(label,(x_rot[i],y_rot[i]))
 
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    plt.savefig("hera_array.pdf")
     plt.show()
     
 if __name__=="__main__":

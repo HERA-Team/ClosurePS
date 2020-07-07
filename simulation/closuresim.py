@@ -127,12 +127,12 @@ def generate_gaussian_beam():
 
 def find_beam_at_point(beam,point):
     beam_shape = beam.shape[0]
-    
+    #print("BEAM Shape: ",beam_shape)
     pl = point[0]
     pm = point[1]
     
-    step = 2/beam_shape
-    
+    step = 2./beam_shape
+    #print(pl); print(pm); print(step)
     bl_ind = int((pl + 1)/step)
     bm_ind = int((pm + 1)/step)
     
@@ -275,6 +275,9 @@ def generate_gaussian_power_beams(locs,mean,lb,ub,lbp,ubp):
     for i in numpy.arange(locs.shape[0]):
         sigma = numpy.random.uniform(lb,ub)
         sigma_imag = numpy.random.uniform(lbp,ubp)
+        #print((numpy.exp(-(((x-mean[i,0])**2)/(2*sigma**2))).shape))
+        #print(beams_matrix.shape)
+              
         beams_matrix[i,:,0] = numpy.exp(-(((x-mean[i,0])**2)/(2*sigma**2)))
         beams_matrix[i,:,1] = numpy.exp(-(((x-mean[i,0])**2)/(2*sigma**2)))
         
